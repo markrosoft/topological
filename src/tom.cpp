@@ -245,7 +245,7 @@ class KinectSensor {
 
 int main(int argc, char **argv)
 {
-    string arrStr[4] = {"data/Aisle1.txt", "data/Kitchen.txt", "data/WayPoint3.txt", "data/Aisle2.txt"};
+    string arrStr[4] = {"/home/mark/Aisle1.txt", "/home/mark/Kitchen.txt", "/home/mark/WayPoint3.txt", "/home/mark/Aisle2.txt"};
     vector <vector <vector <float> > > data;
 
 
@@ -308,11 +308,11 @@ int main(int argc, char **argv)
     }
 
 
-    float temp[] = {data[0][25][2], data[0][25][1],         // GET MEDIAN
+    double temp[] = {data[0][25][2], data[0][25][1],         // GET MEDIAN
                      data[1][25][2], data[1][25][1],
                      data[2][25][2], data[2][25][1],
                      data[3][25][2], data[3][25][1]};
-    /*
+   
     cv::Mat v(4, 2, CV_64F, temp);
 
     double wpc[] = {0,0,0,-1,-1,-1,-1,0};
@@ -353,7 +353,7 @@ d.inv();
     Mat y=(-(b0)*a1+b1*a0)/d;
     std::cout << x << y<< std::endl;
      //cv::multiply(v.at<float>(0,0),v.at<float>(0,0));
-     */
+     
 
 
 
