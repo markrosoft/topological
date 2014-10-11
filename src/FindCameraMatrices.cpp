@@ -339,7 +339,8 @@ bool FindCameraMatrices(const Mat& K,
 						Matx34d& P,
 						Matx34d& P1,
 						vector<DMatch>& matches,
-						vector<CloudPoint>& outCloud
+                        vector<CloudPoint>& outCloud,
+                        vector<CloudPoint>& outCloud1
 #ifdef __SFM__DEBUG__
 						,const Mat& img_1,
 						const Mat& img_2
@@ -448,7 +449,10 @@ bool FindCameraMatrices(const Mat& K,
 			for (unsigned int i=0; i<pcloud.size(); i++) {
 				outCloud.push_back(pcloud[i]);
 			}
-		}		
+            for (unsigned int i=0; i<pcloud1.size(); i++) {
+                outCloud1.push_back(pcloud1[i]);
+            }
+        }
 		
 		t = ((double)getTickCount() - t)/getTickFrequency();
 		cout << "Done. (" << t <<"s)"<< endl;

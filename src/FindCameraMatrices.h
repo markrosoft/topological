@@ -41,7 +41,8 @@ bool FindCameraMatrices(const cv::Mat& K,
 						cv::Matx34d& P,
 						cv::Matx34d& P1,
 						std::vector<cv::DMatch>& matches,
-						std::vector<CloudPoint>& outCloud
+                        std::vector<CloudPoint>& outCloud,
+                        std::vector<CloudPoint>& outCloud1
 #ifdef __SFM__DEBUG__
 						,const cv::Mat& = cv::Mat(), const cv::Mat& = cv::Mat()
 #endif

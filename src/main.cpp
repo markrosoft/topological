@@ -22,6 +22,7 @@
 #include <sensor_msgs/Image.h>
 #include <sensor_msgs/PointCloud2.h>
 #include <sensor_msgs/JointState.h>
+#include <std_msgs/String.h>
 #include <geometry_msgs/Pose.h>
 #include <boost/foreach.hpp>
 #include "conversions.h"
@@ -43,12 +44,15 @@ using namespace cv;
 using namespace std;
 
 int switchNum = 0;
-
 double robotPose[3];
 
+int myFundCount = -1;
+bool fundChecker = true;
+
+std::string headerFormating = "groundTruth\testimation\tangle\tmovement\tmovement\tmatches\t";
 
 #define PI 3.14159265
-#define DISTANCE_FACTOR 0.7
+#define DISTANCE_FACTOR 0.8
 
 float PTU_UPPERLIMIT = 3;
 float PTU_LOWERLIMIT = -3;
@@ -68,12 +72,15 @@ struct estimation
     int matches;
 };
 
-
+char runOutputFile[] = "Estimation.txt";
 
 class ptu_features
 {
     public:
         std::string locationID;
+        std::string groundTruth;
+        std::ofstream outfile;
+        std::vector<estimation> whereAmI;
 
         ptu_features(ros::NodeHandle* _n)                                                                   // Constructor
         {
@@ -84,9 +91,11 @@ class ptu_features
             ptu.name.resize(2);
             ptu.position.resize(2);
             ptu.velocity.resize(2);
-            ptu_pub = this->n.advertise<sensor_msgs::JointState>("/ptu/cmd", 1);
 
-            myfile.open("tempGraphical.txt");
+            ptu_pub = this->n.advertise<sensor_msgs::JointState>("/ptu/cmd", 1);
+            isLost = this->n.advertise<std_msgs::String>("/topological/lostState", 1);
+
+            myfile.open("lastGraph.txt");
             detector.hessianThreshold = 1000;
             ptu_start_angle = 1000; // init to number greater than 0-360
             f = 590;                // claims 525
@@ -110,7 +119,7 @@ class ptu_features
                     if(is_linda_lost == false)
                     {
                         is_linda_lost = true;
-                        switchNum = 2;
+                        //switchNum = 2;
                         std::cout << "Let the spin begin!" << std::endl;
                     }
                 }
@@ -130,7 +139,12 @@ class ptu_features
                 }
                 if(temp == "record")
                 {
-                    switchNum = 1;  // 1 for init pictures
+                    std::cout << "Reseting to defaults" << std::endl;
+                    switchNum = 1;
+                }
+                if(temp == "localise")
+                {
+                    switchNum = 2;  // 1 for init pictures
                 }
                 if(temp == "exit" || temp == "kill")
                 {
@@ -139,8 +153,10 @@ class ptu_features
             }
             if(!req.file.empty())
             {
-                locationID = req.file;
-                std::cout << "New Goal State: " << locationID << std::endl;
+                groundTruth = req.file;
+                std::cout << "New Goal State: " << groundTruth << std::endl;
+                if(switchNum==1)
+                    locationID=groundTruth;
             }
 
             res.response = "Done";
@@ -162,6 +178,8 @@ class ptu_features
             ptuGoal = 1000;
             feature_sphere.keypoints.clear();
             feature_sphere.descriptors.release();
+            is_linda_lost = false;
+            bestMatch = 0;
         }
 
         void callback(const sensor_msgs::ImageConstPtr &img,  const sensor_msgs::JointStateConstPtr &ptu_state)
@@ -179,7 +197,7 @@ class ptu_features
                 if(this->read_features.size() == 0)
                 {
                     std::stringstream ss;
-                    ss<<this->locationID<< ".jpg";
+                    ss<<this->groundTruth<< ".jpg";
 
                     cv::imwrite(ss.str(), conversions(img));
                 }
@@ -223,6 +241,7 @@ class ptu_features
                             std::cout << "the sweep is complete" << std::endl;
                             if(this->read_features.size() > 0)
                             {
+
                                 for(int i = 0; i < whereAmI.size(); i ++)
                                 {
                                     this->pointer = i;
@@ -232,7 +251,6 @@ class ptu_features
                                 }
 
                                 int bestPos = 0;
-                                int bestMatch;
 
                                 for(int i = 0; i < whereAmI.size(); i ++)
                                 {
@@ -243,28 +261,53 @@ class ptu_features
                                     }
                                 }
 
-                                std::ofstream outfile;
-
-                                outfile.open("Estimation.txt", std::ios_base::app);
-
-                                std::string myTempString = whereAmI[bestMatch].name;
-
-                                myTempString.erase(0, dirName.length());
-                                outfile << locationID << "\t" << myTempString << "\t" << whereAmI[bestMatch].angle << "\t" << whereAmI[bestMatch].matches << "\n";
-
-                                outfile.close();
-                                locationID = whereAmI[bestMatch].name;
-
-                                estimatedAngle = whereAmI[bestMatch].angle;
-                                myfile.close();
-                                if(is_linda_lost || whereAmI[bestMatch].matches < 150)      // Has linda said she is lost or returned bad matches?
+                                int secondBestPos = 0;
+                                bestPos = 0;
+                                for(int i = 0; i < whereAmI.size(); i ++)
                                 {
+                                    if(bestPos < whereAmI[i].matches && i!= bestMatch)
+                                    {
+                                        bestPos=whereAmI[i].matches;
+                                        secondBestPos = i;
+                                    }
+                                }
+
+                                int thirdBestPos = 0;
+                                bestPos = 0;
+                                for(int i = 0; i < whereAmI.size(); i ++)
+                                {
+                                    if(bestPos < whereAmI[i].matches && i!= bestMatch && i!= bestMatch)
+                                    {
+                                        bestPos=whereAmI[i].matches;
+                                        thirdBestPos = i;
+                                    }
+                                }
+
+                                locationID = whereAmI[bestMatch].name;
+                                estimatedAngle = whereAmI[bestMatch].angle;
+
+                                if(is_linda_lost || whereAmI[bestMatch].matches < 100)      // (100) Has linda said she is lost or returned bad matches?
+                                {
+                                    is_linda_lost = true;
                                     std::cout << "Not enough information to go on attempting fundamental matrix!" << std::endl;
+                                    if(fundChecker)
+                                        estimatedAngle = whereAmI[myFundCount].angle;
+
                                     moveCam(((-int(estimatedAngle)-180) % 360)+180);
+
                                     switchNum = 3;
                                 }
                                 else
                                 {
+                                    outfile.open(runOutputFile, std::ios_base::app);
+                                    outfile << groundTruth << "\t" << locationID << "\t" <<  whereAmI[bestMatch].angle << "\t" << whereAmI[bestMatch].matches << "\tNA\tNA\t";
+                                    for(int i = 0; i < whereAmI.size(); i ++)
+                                    {
+                                        outfile << whereAmI[i].matches << "\t";
+                                    }
+                                    outfile << "\n";
+                                    outfile.close();
+
                                     std::cout << "\nI believe I am at " << locationID << " and " << whereAmI[bestMatch].angle << " off angle!"<< std::endl;
                                     switchNum = 0;
                                 }
@@ -294,10 +337,26 @@ class ptu_features
                 if(PTUdif < 0.001)
                     switchNum++;
 
-
                 break;
             case 4:
                 finalComparason(conversions(img));
+                break;
+            case 5:
+                myFundCount--;
+                if(myFundCount >= 0)
+                {
+                    average.clear();
+                    average.push_back(0); average.push_back(0); average.push_back(0);
+                    count = 0;
+                    subcount = 0;
+
+                    estimatedAngle = whereAmI[myFundCount].angle;
+                    moveCam(((-int(estimatedAngle)-180) % 360)+180);
+
+                    switchNum = 3;
+                }else
+                    switchNum = 0;
+
                 break;
             default:
                 std::cout << "UNKNOWN SWITCH STATEMENT CLOSING" << std::endl;
@@ -346,14 +405,15 @@ class ptu_features
 
                     this->read_features.push_back(temp);
 
-                    estimation guessTemp;
+                    estimation guessTemp;       // reading is likely going to lead to estimations, best handle this here
                     guessTemp.angle = 0;
-                    guessTemp.matches =0;
+                    guessTemp.matches = 0;
+                    guessTemp.name = fn.substr(fn.find_last_of("/")+1, fn.find_last_of(".") - fn.find_last_of("/")-1);  // trim away directory and extension
 
-                    guessTemp.name = fn.substr(0, fn.find_last_of("."));
                     whereAmI.push_back(guessTemp);
-
-                    std::cout << "Successfully Loaded " << this->read_features[this->read_features.size()-1].keypoints.size() << " keypoints from " << fn << std::endl;
+                    std::cout << "Successfully Loaded " << this->read_features[this->read_features.size()-1].keypoints.size() << " keypoints from " << guessTemp.name << std::endl;
+                    if(fundChecker)
+                        myFundCount++;
                 }
             }
         }
@@ -368,10 +428,11 @@ class ptu_features
 
         void finalComparason(cv::Mat img_2)
         {
+
             std::cout << "######################## " << subcount << " # " << count << " ########################" << std::endl;
-            if(subcount >= 100)
+            if(subcount >= 100 && !fundChecker ) // I am clearly lost // perhaps add -> && !fundChecker
             {
-                std::cout << "I am sure where I am so shall create a custom waypoint here!" << std::endl;
+                std::cout << "I not am sure where I am so shall create a custom waypoint here!" << std::endl;
                 save(feature_sphere);
                 int found = 1;
                 for(int i =0; i < this->whereAmI.size(); i++)
@@ -381,29 +442,40 @@ class ptu_features
                         found++;
                 }
 
-
-
                 std::ostringstream oss;
                 oss << dirName << "LostState_" << found;
+
                 locationID = oss.str();
 
                 if(save(feature_sphere))    // save .yml Data
                 {
                     ForwardCamFrame;
                     std::stringstream ss;
-                    ss<<this->locationID<< ".jpg";
+                    ss<< dirName << "/" << this->locationID<< ".jpg";
                     cv::imwrite( ss.str(), ForwardCamFrame );   // Save frame view forward
 
                     read(locationID, false);                    // Add to Database
                 }
+
+                outfile.open(runOutputFile, std::ios_base::app);
+                outfile << headerFormating;
+                for(int i = 0; i < whereAmI.size(); i++)
+                {
+                    outfile << whereAmI[i].name << "\t";
+                }
+                outfile << "\n";
+                outfile.close();
 
                 switchNum = 0;
                 return;
             }
             if(count < 50)
             {
+                if(fundChecker)
+                    locationID = whereAmI[myFundCount].name;
+
                 std::stringstream ss;
-                ss<<this->locationID<< ".jpg";
+                ss<< dirName << "/" << this->locationID<< ".jpg";
                 cv::Mat img_1 = cv::imread( ss.str(), CV_LOAD_IMAGE_GRAYSCALE );
 
 
@@ -432,52 +504,33 @@ class ptu_features
 
                 std::vector< cv::DMatch > matches;
 
-                /*
                 //-- Step 3: Matching descriptor vectors with a brute force matcher
-                cv::BFMatcher matcher(cv::NORM_L1, true);
-                std::vector< cv::DMatch > prematches, matches;
-                matcher.match( descriptors_1, descriptors_2, prematches );
-
-
-
-                for(unsigned int i = 0; i < prematches.size(); i++)
-                    if(prematches[i].distance < 0.5)
-                        matches.push_back(prematches[i]);
-
-                        */
-
                 for(   int i=0; i < preProcessedMatches.size(); i++)
-                   {
-                       if (preProcessedMatches[i].size() == 2)
-                       {
-                           if (preProcessedMatches[i][0].distance < preProcessedMatches[i][1].distance * 0.8)
-                           {
-                               DMatch match = DMatch(preProcessedMatches[i][0].queryIdx, preProcessedMatches[i][0].trainIdx, preProcessedMatches[i][0].distance);
-                               //std::cout << preProcessedMatches[i][0].queryIdx <<"\t"<<preProcessedMatches[i][0].trainIdx << std::endl;
+                {
+                    if (preProcessedMatches[i].size() == 2)
+                    {
+                        if (preProcessedMatches[i][0].distance < preProcessedMatches[i][1].distance * 0.85)
+                        {
+                            DMatch match = DMatch(preProcessedMatches[i][0].queryIdx, preProcessedMatches[i][0].trainIdx, preProcessedMatches[i][0].distance);
+                            //std::cout << preProcessedMatches[i][0].queryIdx <<"\t"<<preProcessedMatches[i][0].trainIdx << std::endl;
 
-                               float difX = keypoints_1[preProcessedMatches[i][0].queryIdx].pt.x - keypoints_2[preProcessedMatches[i][0].trainIdx].pt.x;
-                               float difY = keypoints_1[preProcessedMatches[i][0].queryIdx].pt.y - keypoints_2[preProcessedMatches[i][0].trainIdx].pt.y;
-                               float dis = sqrt((difX*difX)+(difY*difY));
+                            float difX = keypoints_1[preProcessedMatches[i][0].queryIdx].pt.x - keypoints_2[preProcessedMatches[i][0].trainIdx].pt.x;
+                            float difY = keypoints_1[preProcessedMatches[i][0].queryIdx].pt.y - keypoints_2[preProcessedMatches[i][0].trainIdx].pt.y;
+                            float dis = sqrt((difX*difX)+(difY*difY));
 
-                               if(difY < 100 || difY > -100)    // .. this will disregard diagonal matches
+                            if(difY < 150 && difY > -150)    // .. this will disregard diagonal matches
                                 matches.push_back(match);
-
-                           }else{
-                               DMatch match = DMatch(preProcessedMatches[i][0].queryIdx, -1, preProcessedMatches[i][0].distance);
-                               // .. ignore these features as later functions cannot
-                               //std::cout << preProcessedMatches[i][0].queryIdx <<"\t"<<preProcessedMatches[i][0].trainIdx << " <<" << std::endl;
-                              // matches.push_back(match);
-                           }
-                       }
-                       else if (preProcessedMatches[i].size() == 1)
-                       {
+                        }
+                    }
+                    else if (preProcessedMatches[i].size() == 1)
+                    {
                            DMatch match = DMatch(preProcessedMatches[i][0].queryIdx, preProcessedMatches[i][0].trainIdx, preProcessedMatches[i][0].distance);
                            matches.push_back(match);
-                       }else{
-                           DMatch match = DMatch(preProcessedMatches[i][0].queryIdx, -1, preProcessedMatches[i][0].distance);
-                           matches.push_back(match);
-                       }
-                   }
+                    }else{
+                        DMatch match = DMatch(preProcessedMatches[i][0].queryIdx, -1, preProcessedMatches[i][0].distance);
+                        matches.push_back(match);
+                    }
+                }
 
                 //-- Draw matches
                 cv::Mat img_matches;
@@ -529,11 +582,32 @@ class ptu_features
 
                 std::vector<cv::KeyPoint> p1,p2;
                 std::vector<CloudPoint> cloud;
+                std::vector<CloudPoint> cloud1;
 
-                bool x = FindCameraMatrices(K,Kinv,D,keypoints_1,keypoints_2, p1,p2,P,P1,matches,cloud);
+                bool x = FindCameraMatrices(K,Kinv,D,keypoints_1,keypoints_2, p1,p2,P,P1,matches,cloud,cloud1);
+
+
+               // struct CloudPoint {
+               //     cv::Point3d pt;
+               //     std::vector<int> imgpt_for_img;
+               //     double reprojection_error;
+               // };
+
+                std::cout << cloud[0].pt << " " << cloud1[0].pt << std::endl;
 
                 if(x)
                 {
+                    if(fundChecker)
+                    {
+                        std::ofstream prnt2File;
+                        prnt2File.open("FundAverge.txt", std::ios_base::app);
+                        prnt2File << locationID << "\t" << P1(0,0) << "\t" << P1(0,1) << "\t" << P1(0,2) << "\t" << P1(0,3) << "\t" << P1(1,0) << "\t" << P1(1,1) << "\t" << P1(1,2) << "\t" << P1(1,3) << "\t" << P1(2,0) << "\t" << P1(2,1) << "\t" << P1(2,2) << "\t" << P1(2,3) << "\n";
+                        prnt2File.close();
+                    }
+
+
+
+
                     average[0] += P1(0,3);
                     average[1] += P1(1,3);
                     average[2] += P1(2,3);
@@ -556,11 +630,24 @@ class ptu_features
                 else
                     std::cout << float(average[1] / count) << " ? Back" << std::endl;
 
-
                 std::cout << estimatedAngle << " Degrees off recorded data!" << std::endl;
 
-                switchNum = 0;
-                is_linda_lost = false;
+                outfile.open(runOutputFile, std::ios_base::app);
+                outfile << groundTruth << locationID << "\t" <<  whereAmI[bestMatch].angle << "\t" << whereAmI[bestMatch].matches << "\t" << float(average[0] / count)  << "\t" << float(average[1] / count)  << "\t";
+                for(int i = 0; i < whereAmI.size(); i ++)
+                {
+                    outfile << whereAmI[i].matches << "\t";
+                }
+                outfile << "\n";
+                outfile.close();
+
+                if(fundChecker)
+                    switchNum = 5;
+                else
+                {
+                    switchNum = 0;
+                    is_linda_lost = false;
+                }
             }
             subcount++;
         }
@@ -593,6 +680,15 @@ private:
             robotPose[0] = msg->position.x ;
             robotPose[1] = msg->position.y;
             robotPose[2] = msg->orientation.z;
+
+            std::string temp = "localised";
+            std_msgs::String str;
+
+            if(is_linda_lost)
+                temp = "lost";
+
+            str.data = temp;
+            isLost.publish(str);
         }
 
         void extractFeatures(cv::Mat image, feature_struct &sphere, float angle)
@@ -783,14 +879,15 @@ protected:  // .. This is why they made header files
         cv::SurfDescriptorExtractor extractor;
         cv::FlannBasedMatcher matcher;
         feature_struct feature_sphere;
-        std::vector<feature_struct> read_features;
+
         float ptu_start_angle;
         float ptu_angle;
-        std::vector<estimation> whereAmI;
+
         std::ofstream myfile;
 
         // new
         ros::Publisher  ptu_pub;
+        ros::Publisher  isLost;
         ros::Subscriber pose_sub;
         ros::Subscriber lost_sub;
         sensor_msgs::JointState ptu;
@@ -803,7 +900,7 @@ protected:  // .. This is why they made header files
         clock_t stationary_clock;
         float realRobot_pose;
         std::string dirName;
-
+        std::vector<feature_struct> read_features;
         int estimatedAngle;
 
         cv::Mat ForwardCamFrame;
@@ -813,6 +910,7 @@ protected:  // .. This is why they made header files
         cv::SurfFeatureDetector detector2();
         cv::Ptr<cv::BOWKMeansTrainer> bow;
         std::vector<double > average;
+        int bestMatch;
 };
 
 bool reset(std_srvs::Empty::Request& request, std_srvs::Empty::Response& response)
@@ -850,11 +948,21 @@ int main (int argc, char** argv)
 
     // read old location Data
     if(argc > 1)
-        if(getData)
+        if(!getData)
         {
-            camClass.locationID = argv[1];
-            switchNum = 1;
-        }else camClass.read(argv[1], false);
+            camClass.read(argv[1], false);
+            if(camClass.whereAmI.size() > 0)
+            {
+                camClass.outfile.open(runOutputFile, std::ios_base::app);
+                camClass.outfile << headerFormating;
+                for(int i = 0; i < camClass.whereAmI.size(); i++)
+                {
+                    camClass.outfile << camClass.whereAmI[i].name << "\t";
+                }
+                camClass.outfile << "\n";
+                camClass.outfile.close();
+            }
+        }
 
     message_filters::Subscriber<sensor_msgs::Image> image_sub(n, "/head_xtion/rgb/image_color", 1);
     message_filters::Subscriber<sensor_msgs::JointState> ptu_sub(n, "/ptu/state", 1);

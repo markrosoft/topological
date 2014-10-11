@@ -144,6 +144,14 @@ add_executable(topological_recoverer
     src/Common.cpp
 )
 
+add_executable(tom  
+    src/conversions.cpp
+    src/tom.cpp
+    src/FindCameraMatrices.cpp
+    src/Triangulation.cpp
+    src/Common.cpp
+)
+
 ## Add cmake target dependencies of the executable/library
 ## as an example, message headers may need to be generated before nodes
 # add_dependencies(topological_recovery_node topological_recovery_generate_messages_cpp)
@@ -155,6 +163,13 @@ target_link_libraries(topological_recoverer
    ${OpenCV_LIBRARIES}
 )
 add_dependencies(topological_recoverer topological_recovery_gencpp)
+
+
+target_link_libraries(tom
+   ${catkin_LIBRARIES}
+   ${PCL_LIBRARIES}
+   ${OpenCV_LIBRARIES}
+)
 
 #############
 ## Install ##
