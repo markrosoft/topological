@@ -245,7 +245,7 @@ class KinectSensor {
 
 int main(int argc, char **argv)
 {
-    string arrStr[4] = {"/home/mark/Aisle1.txt", "/home/mark/Kitchen.txt", "/home/mark/WayPoint3.txt", "/home/mark/Aisle2.txt"};
+    string arrStr[4] = {"data/Aisle1.txt", "data/Kitchen.txt", "data/WayPoint3.txt", "data/Aisle2.txt"};
     vector <vector <vector <float> > > data;
 
 
