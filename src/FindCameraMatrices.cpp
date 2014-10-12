@@ -357,10 +357,10 @@ bool FindCameraMatrices(const Mat& K,
 								  ,img_1,img_2
 #endif
 								  );
-		if(matches.size() < 100) { // || ((double)imgpts1_good.size() / (double)imgpts1.size()) < 0.25
+/*		if(matches.size() < 100) { // || ((double)imgpts1_good.size() / (double)imgpts1.size()) < 0.25
 			cerr << "not enough inliers after F matrix" << endl;
 			return false;
-		}
+		}*/
 		
 		//Essential matrix: compute then extract cameras [R|t]
 		Mat_<double> E = K.t() * F * K; //according to HZ (9.12)
