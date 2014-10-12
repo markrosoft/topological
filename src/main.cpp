@@ -43,6 +43,16 @@
 using namespace cv;
 using namespace std;
 
+#define NUM_WAYPOINTS 4
+#define NUM_FUNDS  50
+
+int numMatches  = NUM_WAYPOINTS;
+int bestMatches[NUM_WAYPOINTS];
+int bestIndex[NUM_WAYPOINTS];
+double vx[NUM_WAYPOINTS][50];
+double vy[NUM_WAYPOINTS][50];
+int counts[NUM_WAYPOINTS];
+
 int switchNum = 0;
 double robotPose[3];
 
@@ -217,113 +227,100 @@ class ptu_features
                     }
                 }
                 if(PTUdif < 0.001 || ptuGoal == 1000)
-                {
-                    if(((double) (clock() - stationary_clock) / CLOCKS_PER_SEC) > ptu_stationary)
-                   {
+		{
+			if(((double) (clock() - stationary_clock) / CLOCKS_PER_SEC) > ptu_stationary)
+			{
 
-                        if(ptu_pose <= 180)
-                        {
-                            if(ptu_start_angle == 1000)
-                            {
-                                ptu_start_angle = ptuAng;
-                            }else{
-                                extractFeatures(conversions(img), feature_sphere, ptuAng);
-                            }
-                            stationary_clock = clock();
-                            moveCam(ptu_pose);
-                            if(ptu_pose==45)
-                                ForwardCamFrame = conversions(img);
+				if(ptu_pose <= 180)
+				{
+					if(ptu_start_angle == 1000)
+					{
+						ptu_start_angle = ptuAng;
+					}else{
+						extractFeatures(conversions(img), feature_sphere, ptuAng);
+					}
+					stationary_clock = clock();
+					moveCam(ptu_pose);
+					if(ptu_pose==45)
+						ForwardCamFrame = conversions(img);
 
-                            ptu_pose += ptu_iterator;
-                        }
-                        else    // ptu spin complete
-                        {
-                            std::cout << "the sweep is complete" << std::endl;
-                            if(this->read_features.size() > 0)
-                            {
+					ptu_pose += ptu_iterator;
+				}
+				else    // ptu spin complete
+				{
+					std::cout << "the sweep is complete" << std::endl;
+					if(this->read_features.size() > 0)
+					{
 
-                                for(int i = 0; i < whereAmI.size(); i ++)
-                                {
-                                    this->pointer = i;
-                                    myfile << whereAmI[i].name << "\t";
-                                    match(read_features[i], feature_sphere);
-                                    myfile << "\n";
-                                }
+						for(int i = 0; i < whereAmI.size(); i ++)
+						{
+							this->pointer = i;
+							myfile << whereAmI[i].name << "\t";
+							match(read_features[i], feature_sphere);
+							myfile << "\n";
+						}
 
-                                int bestPos = 0;
+						//best matches	TOM
+						myFundCount = numMatches;
+						for (int j = 0;j<numMatches;j++){	
+							bestMatches[j] = -1;
+							for(int i = 0; i < whereAmI.size(); i ++)
+							{
+								if(bestMatches[j] < whereAmI[i].matches)
+								{
+									bestMatches[j]=whereAmI[i].matches;
+									bestIndex[j] = i;
+								}
+							}
+							whereAmI[bestIndex[j]].matches = -1;
+						}
+						for (int j = 0;j<numMatches;j++) whereAmI[bestIndex[j]].matches = bestMatches[j];
+						for (int j = 0;j<numMatches;j++) printf("MATCHES: %i %i\n",bestIndex[j],bestMatches[j]);
+						switchNum = 5;
 
-                                for(int i = 0; i < whereAmI.size(); i ++)
-                                {
-                                    if(bestPos < whereAmI[i].matches)
-                                    {
-                                        bestPos=whereAmI[i].matches;
-                                        bestMatch = i;
-                                    }
-                                }
+						/*                                locationID = whereAmI[bestMatch].name;
+										  estimatedAngle = whereAmI[bestMatch].angle;
 
-                                int secondBestPos = 0;
-                                bestPos = 0;
-                                for(int i = 0; i < whereAmI.size(); i ++)
-                                {
-                                    if(bestPos < whereAmI[i].matches && i!= bestMatch)
-                                    {
-                                        bestPos=whereAmI[i].matches;
-                                        secondBestPos = i;
-                                    }
-                                }
+										  if(is_linda_lost || whereAmI[bestIndex[0]].matches < 1001)      // (100) Has linda said she is lost or returned bad matches?
+										  {
+										  is_linda_lost = true;
+										  std::cout << "Not enough information to go on attempting fundamental matrix!" << std::endl;
+										  if(fundChecker)
+										  estimatedAngle = whereAmI[myFundCount].angle;
 
-                                int thirdBestPos = 0;
-                                bestPos = 0;
-                                for(int i = 0; i < whereAmI.size(); i ++)
-                                {
-                                    if(bestPos < whereAmI[i].matches && i!= bestMatch && i!= bestMatch)
-                                    {
-                                        bestPos=whereAmI[i].matches;
-                                        thirdBestPos = i;
-                                    }
-                                }
+										  moveCam(((-int(estimatedAngle)-180) % 360)+180);
 
-                                locationID = whereAmI[bestMatch].name;
-                                estimatedAngle = whereAmI[bestMatch].angle;
+										  switchNum = 3;
+										  }
+										  else
+										  {
+										  outfile.open(runOutputFile, std::ios_base::app);
+										  outfile << groundTruth << "\t" << locationID << "\t" <<  whereAmI[bestMatch].angle << "\t" << whereAmI[bestMatch].matches << "\tNA\tNA\t";
+										  for(int i = 0; i < whereAmI.size(); i ++)
+										  {
+										  outfile << whereAmI[i].matches << "\t";
+										  }
+										  outfile << "\n";
+										  outfile.close();
 
-                                if(is_linda_lost || whereAmI[bestMatch].matches < 100)      // (100) Has linda said she is lost or returned bad matches?
-                                {
-                                    is_linda_lost = true;
-                                    std::cout << "Not enough information to go on attempting fundamental matrix!" << std::endl;
-                                    if(fundChecker)
-                                        estimatedAngle = whereAmI[myFundCount].angle;
+										  std::cout << "\nI believe I am at " << locationID << " and " << whereAmI[bestMatch].angle << " off angle!"<< std::endl;
+										  switchNum = 0;
+										  }*/
+					}
+					else
+					{
+						moveCam(0);
+						while(!save(feature_sphere));
+						std::cout << "File Saved!" << std::endl;
+						switchNum = 0;
+					}
+				}
+			}else
+				stationary_clock = clock();
 
-                                    moveCam(((-int(estimatedAngle)-180) % 360)+180);
-
-                                    switchNum = 3;
-                                }
-                                else
-                                {
-                                    outfile.open(runOutputFile, std::ios_base::app);
-                                    outfile << groundTruth << "\t" << locationID << "\t" <<  whereAmI[bestMatch].angle << "\t" << whereAmI[bestMatch].matches << "\tNA\tNA\t";
-                                    for(int i = 0; i < whereAmI.size(); i ++)
-                                    {
-                                        outfile << whereAmI[i].matches << "\t";
-                                    }
-                                    outfile << "\n";
-                                    outfile.close();
-
-                                    std::cout << "\nI believe I am at " << locationID << " and " << whereAmI[bestMatch].angle << " off angle!"<< std::endl;
-                                    switchNum = 0;
-                                }
-                            }
-                            else
-                            {
-                                moveCam(0);
-                                while(!save(feature_sphere));
-                                std::cout << "File Saved!" << std::endl;
-                                switchNum = 0;
-                            }
-                        }
-                    }
-                }else
-                    stationary_clock = clock();
+		}
             break;
+
             case 3:
                 PTUdif = 0;
                 for (int i = 0;i<ptu_state->name.size();i++)
@@ -339,24 +336,65 @@ class ptu_features
 
                 break;
             case 4:
+                locationID = whereAmI[bestIndex[myFundCount]].name;
                 finalComparason(conversions(img));
                 break;
             case 5:
                 myFundCount--;
                 if(myFundCount >= 0)
                 {
-                    average.clear();
-                    average.push_back(0); average.push_back(0); average.push_back(0);
+                    //average.clear();
+                    //average.push_back(0); average.push_back(0); average.push_back(0);
                     count = 0;
                     subcount = 0;
 
-                    estimatedAngle = whereAmI[myFundCount].angle;
+                    estimatedAngle = whereAmI[bestIndex[myFundCount]].angle;
                     moveCam(((-int(estimatedAngle)-180) % 360)+180);
-
                     switchNum = 3;
-                }else
+                }else{
                     switchNum = 0;
+                    moveCam(0);
+		    float avx[NUM_WAYPOINTS];
+		    float avy[NUM_WAYPOINTS];
+		    float bvx[NUM_WAYPOINTS];
+		    float bvy[NUM_WAYPOINTS];
+		    float px[NUM_WAYPOINTS];
+		    float py[NUM_WAYPOINTS];
+		    for (int i = 0;i<NUM_WAYPOINTS;i++)
+		    {
+			   avx[i] =avy[i] = 0;
+			    for (int j = 0;j<NUM_FUNDS;j++)
+			    {
+			             avx[i] += vx[i][j];
+			             avy[i] += vy[i][j];
+				    //printf("%i %i %.3f %.3f %.3f %.3f %s\n",i,j,vx[i][j],vy[i][j],whereAmI[bestIndex[i]].angle,whereAmI[bestIndex[i]].angle,whereAmI[bestIndex[i]].name.c_str()); 
+			    }
+			    avx[i] = avx[i]/NUM_FUNDS;	
+			    avy[i] = avy[i]/NUM_FUNDS;
+		            bvx[i] = avy[i];
+		            bvy[i] = -avx[i];
+			    px[i] = read_features[bestIndex[i]].robotPose[0];
+			    py[i] = read_features[bestIndex[i]].robotPose[1];	
+			    printf("%i %.3f %.3f %.3f %.3f %s\n",i,avx[i],avy[i],px[i],py[i],whereAmI[bestIndex[i]].name.c_str()); 
+		    }
 
+		    float c[NUM_WAYPOINTS];
+		    for (int i=0;i<NUM_WAYPOINTS;i++) c[i]=px[i]*bvx[i]+bvy[i]*py[i];
+
+		    float a0,a1,a2,b0,b1;
+		    a0=a1=a2=b0=b1=0;
+		    for (int i=0;i<NUM_WAYPOINTS;i++){
+			    a0+= bvx[i]*bvx[i];
+			    a1+= bvx[i]*bvy[i];
+			    a2+= bvy[i]*bvy[i];
+			    b0+= bvx[i]*c[i];
+			    b1+= bvy[i]*c[i];
+		    }
+		    float d=a0*a2-a1*a1;
+		    float x =(+b0*a2-b1*a1)/d;
+		    float y =(-b0*a1+b1*a0)/d;
+		    printf("POS: %.3f %.3f\n",x,y); 
+		}
                 break;
             default:
                 std::cout << "UNKNOWN SWITCH STATEMENT CLOSING" << std::endl;
@@ -399,8 +437,14 @@ class ptu_features
                     fs2["descriptors"] >> temp.descriptors; //this->read_features[0].descriptors;
 
                     cv::FileNode  kptFileNode1 = fs2["keypoints"];
-                    cv::read( kptFileNode1, temp.keypoints);// this->read_features[0].keypoints );
 
+                    cv::read( kptFileNode1, temp.keypoints);// this->read_features[0].keypoints );
+                    cv::Mat tempPose(3, 1, CV_64F, robotPose);
+                    cv::FileNode  kptFileNode2 = fs2["robotPose"];
+                    cv::read( kptFileNode2, tempPose);;
+                    temp.robotPose[0] = tempPose.at<double>(0);
+                    temp.robotPose[1] = tempPose.at<double>(1);
+                    temp.robotPose[2] = tempPose.at<double>(2);
                     fs2.release();
 
                     this->read_features.push_back(temp);
@@ -469,7 +513,7 @@ class ptu_features
                 switchNum = 0;
                 return;
             }
-            if(count < 50)
+            if(count < NUM_FUNDS)
             {
                 if(fundChecker)
                     locationID = whereAmI[myFundCount].name;
@@ -533,12 +577,12 @@ class ptu_features
                 }
 
                 //-- Draw matches
-                cv::Mat img_matches;
+                /*cv::Mat img_matches;
                 cv::drawMatches( img_1, keypoints_1, img_2, keypoints_2, matches, img_matches );
                 //-- Show detected matches
                 cv::namedWindow( "Matches", CV_WINDOW_NORMAL );
                 cv::imshow("Matches", img_matches );
-                cv::waitKey(30);
+                cv::waitKey(1000000);*/
 
 
                 //-- Step 4: calculate Fundamental Matrix
@@ -585,7 +629,10 @@ class ptu_features
                 std::vector<CloudPoint> cloud1;
 
                 bool x = FindCameraMatrices(K,Kinv,D,keypoints_1,keypoints_2, p1,p2,P,P1,matches,cloud,cloud1);
-
+		//TOM	
+		printf("COUNT: %i %i\n",myFundCount,count);
+                vx[myFundCount][count] = P1(0,3);
+                vy[myFundCount][count] = P1(2,3);
 
                // struct CloudPoint {
                //     cv::Point3d pt;
@@ -593,7 +640,7 @@ class ptu_features
                //     double reprojection_error;
                // };
 
-                std::cout << cloud[0].pt << " " << cloud1[0].pt << std::endl;
+                //std::cout << cloud[0].pt << " " << cloud1[0].pt << std::endl;
 
                 if(x)
                 {
@@ -605,11 +652,8 @@ class ptu_features
                         prnt2File.close();
                     }
 
-
-
-
                     average[0] += P1(0,3);
-                    average[1] += P1(1,3);
+             //       average[1] += P1(1,3);
                     average[2] += P1(2,3);
 
                     count++;

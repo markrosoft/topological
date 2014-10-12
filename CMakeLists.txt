@@ -20,6 +20,8 @@ find_package(catkin REQUIRED COMPONENTS
   cv_bridge
 )
 
+set( CMAKE_CXX_FLAGS "-ggdb" )
+
 INCLUDE(FindPkgConfig)
 pkg_check_modules(GTK REQUIRED gtk+-2.0)
  include_directories(${GTK_INCLUDE_DIRS})  
